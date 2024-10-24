@@ -1,0 +1,311 @@
+---
+env:
+  contexts:
+  - name: "GoVWA"
+    urls:
+    - "http://${HOST}:${PORT}"
+    includePaths:
+    - "http://${HOST}:${PORT}.*"
+    excludePaths:
+    - "http://${HOST}:${PORT}/setup"
+    - "http://${HOST}:${PORT}/logout"
+    authentication:
+      method: "form"
+      parameters:
+        loginRequestBody: "username={%username%}&password={%password%}&submit=Log+in"
+        loginPageUrl: "http://${HOST}:${PORT}/login"
+        loginRequestUrl: "http://${HOST}:${PORT}/login"
+      verification:
+        method: "response"
+        pollFrequency: 60
+        pollUnits: "requests"
+        pollUrl: ""
+        pollPostData: ""
+    sessionManagement:
+      method: "cookie"
+      parameters: {}
+    technology:
+      exclude:
+      - "Windows"
+      - "MacOS"
+      - "IBM DB2"
+      - "SQLite"
+      - "CouchDB"
+      - "Microsoft SQL Server"
+      - "MariaDB"
+      - "Oracle"
+      - "MongoDB"
+      - "Firebird"
+      - "HypersonicSQL"
+      - "Language"
+      - "SAP MaxDB"
+      - "WS"
+      - "SCM"
+      - "PostgreSQL"
+      - "Microsoft Access"
+      - "Sybase"
+      include: []
+    users:
+    - name: "admin"
+      credentials:
+        password: "govwaadmin"
+        username: "admin"
+    - name: "user1"
+      credentials:
+        password: "govwauser1"
+        username: "user1"
+  parameters:
+    failOnError: true
+    failOnWarning: false
+    progressToStdout: true
+    continueOnFailure: false
+  vars: {}
+jobs:
+- alertFilters:
+  - ruleId: "100010"
+    ruleName: "Cookie set without HttpOnly flag (100010)"
+    context: "GoVWA"
+    newRisk: "Info"
+    parameter: ""
+    parameterRegex: false
+    url: "http://${HOST}:${PORT}(/login|/index|/logout)$"
+    urlRegex: true
+    attack: ""
+    attackRegex: false
+    evidence: "(Uid|Level)=.*"
+    evidenceRegex: true
+    methods: []
+  - ruleId: "100010"
+    ruleName: "Cookie set without HttpOnly flag (100010)"
+    context: "GoVWA"
+    newRisk: "Info"
+    parameter: ""
+    parameterRegex: false
+    url: "http://${HOST}:${PORT}/"
+    urlRegex: false
+    attack: ""
+    attackRegex: false
+    evidence: "(Uid|Level)=.*"
+    evidenceRegex: true
+    methods:
+    - "GET"
+  - ruleId: "100010"
+    ruleName: "Cookie set without HttpOnly flag (100010)"
+    context: "GoVWA"
+    newRisk: "Info"
+    parameter: ""
+    parameterRegex: false
+    url: "http://${HOST}:${PORT}"
+    urlRegex: false
+    attack: ""
+    attackRegex: false
+    evidence: "(Uid|Level)=.*"
+    evidenceRegex: true
+    methods:
+    - "GET"
+  - ruleId: "10044"
+    ruleName: "Big Redirect Detected (Potential Sensitive Information Leak) (10044)"
+    context: "GoVWA"
+    newRisk: "False Positive"
+    parameter: ""
+    parameterRegex: false
+    url: "http://${HOST}:${PORT}/login"
+    urlRegex: false
+    attack: ""
+    attackRegex: false
+    evidence: ""
+    evidenceRegex: false
+    methods:
+    - "GET"
+  - ruleId: "10054"
+    ruleName: "Cookie without SameSite Attribute (10054)"
+    context: "GoVWA"
+    newRisk: "False Positive"
+    parameter: ""
+    parameterRegex: false
+    url: "http://${HOST}:${PORT}(/login|/index|/logout)$"
+    urlRegex: true
+    attack: ""
+    attackRegex: false
+    evidence: "Set-Cookie:.*(Uid|Level).*"
+    evidenceRegex: true
+    methods: []
+  parameters: {}
+  name: "alertFilter"
+  type: "alertFilter"
+- parameters:
+    maxAlertsPerRule: 1
+    scanOnlyInScope: true
+    maxBodySizeInBytesToScan: 0
+    enableTags: false
+    disableAllRules: false
+  rules:
+  - id: 10010
+    name: "Cookie No HttpOnly Flag"
+    threshold: "off"
+  - id: 10038
+    name: "Content Security Policy (CSP) Header Not Set"
+    threshold: "high"
+  name: "passiveScan-config"
+  type: "passiveScan-config"
+- parameters:
+    action: "add"
+    type: "passive"
+    engine: "ECMAScript : Graal.js"
+    name: "Cookie set without HttpOnly flag.py"
+    source: "${CI_PROJECT_DIR}/owasp-zap/scripts/passive/Cookie-set-without-HttpOnly-flag.py"
+    target: ""
+    inline: ""
+  name: "script"
+  type: "script"
+- parameters:
+    action: "enable"
+    type: "passive"
+    engine: ""
+    name: "Cookie set without HttpOnly flag.py"
+    target: ""
+    inline: ""
+  name: "script"
+  type: "script"
+- parameters:
+    action: "add"
+    type: "standalone"
+    engine: "ECMAScript : Graal.js"
+    name: "removing duplicates.js"
+    source: "${CI_PROJECT_DIR}/owasp-zap/scripts/standalone/removing-duplicate.js"
+    target: ""
+    inline: ""
+  name: "script"
+  type: "script"
+- parameters:
+    user: ""
+  requests:
+  - url: "http://${HOST}:${PORT}/sqli1"
+    name: "Task SQLi 1"
+    method: "GET"
+    httpVersion: "HTTP/1.1"
+    headers:
+    - "Cookie:Uid=1"
+    data: ""
+    responseCode: 200
+  - url: "http://${HOST}:${PORT}/sqli2?uid=1"
+    name: "Task SQLi 2"
+    method: "GET"
+    httpVersion: "HTTP/1.1"
+    headers: []
+    data: ""
+    responseCode: 200
+  - url: "http://${HOST}:${PORT}/xss1?term=test"
+    name: "Task XSS 1"
+    method: "GET"
+    httpVersion: "HTTP/1.1"
+    headers: []
+    data: ""
+    responseCode: 200
+  - url: "http://${HOST}:${PORT}/xss2?uid=2"
+    name: "Task XSS 2"
+    method: "GET"
+    httpVersion: "HTTP/1.1"
+    headers: []
+    data: ""
+    responseCode: 200
+  - url: "http://${HOST}:${PORT}/idor1action"
+    name: "Task IDOR 1"
+    method: "POST"
+    httpVersion: "HTTP/1.1"
+    headers: []
+    data: "uid=1&name=Ivan&city=Omsk&number=08882112345"
+    responseCode: 200
+  name: "requestor"
+  type: "requestor"
+- parameters:
+    context: "GoVWA"
+    user: ""
+    policy: ""
+    maxRuleDurationInMins: 0
+    maxScanDurationInMins: 0
+    addQueryParam: false
+    delayInMs: 5000
+    handleAntiCSRFTokens: false
+    injectPluginIdInHeader: false
+    scanHeadersAllRequests: false
+    threadPerHost: 40
+    maxAlertsPerRule: 0
+  policyDefinition:
+    defaultStrength: "medium"
+    defaultThreshold: "medium"
+    rules:
+    - id: 40035
+      name: "Hidden File Finder"
+      threshold: "off"
+      strength: "default"
+    - id: 90017
+      name: "XSLT Injection"
+      threshold: "off"
+      strength: "default"
+    - id: 20019
+      name: "External Redirect"
+      threshold: "off"
+      strength: "default"
+    - id: 10104
+      name: "User Agent Fuzzer"
+      threshold: "off"
+      strength: "default"
+  name: "activeScan"
+  type: "activeScan"
+- parameters:
+    action: "run"
+    type: "standalone"
+    engine: ""
+    name: "removing duplicates.js"
+    target: ""
+    inline: ""
+  name: "script"
+  type: "script"
+- parameters:
+    template: "sarif-json"
+    reportDir: ""
+    reportFile: ""
+    reportTitle: "ZAP Scanning Report"
+    reportDescription: ""
+    displayReport: false
+  risks:
+  - "info"
+  - "low"
+  - "medium"
+  - "high"
+  confidences:
+  - "falsepositive"
+  - "low"
+  - "medium"
+  - "high"
+  - "confirmed"
+  sites: []
+  name: "report"
+  type: "report"
+- parameters:
+    template: "traditional-pdf"
+    reportDir: ""
+    reportFile: ""
+    reportTitle: "ZAP Scanning Report"
+    reportDescription: ""
+    displayReport: false
+  risks:
+  - "info"
+  - "low"
+  - "medium"
+  - "high"
+  confidences:
+  - "falsepositive"
+  - "low"
+  - "medium"
+  - "high"
+  - "confirmed"
+  sections:
+  - "instancecount"
+  - "alertdetails"
+  - "alertcount"
+  sites: []
+  name: "report"
+  type: "report"
+

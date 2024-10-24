@@ -1,0 +1,116 @@
+.dt-upload:
+  stage: pre-build
+  tags: 
+    - vm
+  image: docker:stable
+  services:
+    - name: docker:dind
+  before_script:
+    - apk add --update curl
+
+cdxgen:
+  stage: pre-build
+  image: 
+    name: homebrew/brew
+    entrypoint: [""] 
+  tags: 
+    - vm 
+  before_script:
+    - brew install cdxgen
+  script:
+    - cdxgen -t golang -o $CI_PROJECT_DIR/cdxgen_bom_generate_code $CI_PROJECT_DIR/govwa
+  artifacts:
+    paths:
+      - $CI_PROJECT_DIR/cdxgen_bom_generate_code
+
+# WARNING - нестабильная работа job-ы, из-за параллельного запуска двух job, поэтому ждём завершение одного из - https://gitlab.com/pt-appsec/devsecops-tools/-/jobs/7730374689
+trivy-generate-bom-from-code:
+  stage: pre-build
+  image: 
+    name: bitnami/trivy
+    entrypoint: [""] 
+  needs: ["cdxgen"]
+  tags: 
+    - vm 
+  script:
+    - trivy repository --format cyclonedx --output $CI_PROJECT_DIR/trivy_bom_generate_code.json $CI_PROJECT_DIR/govwa/
+  artifacts:
+    paths:
+      - $CI_PROJECT_DIR/trivy_bom_generate_code.json
+
+# WARNING - возможно нестабильная работа job-ы, посольку trivy генериурет формат cyclonedx версии 1.6, cyclonedx поддерживает только версию 1.5
+# Поэтому разрешаем подание job-ы
+# Подписать можно только xml bom файлы поэтому - на текущем этапе не подписываем 
+cyclonedx:
+  stage: pre-build
+  image: 
+    name: cyclonedx/cyclonedx-cli
+    entrypoint: [""] 
+  allow_failure: true
+  needs: ["cdxgen", "trivy-generate-bom-from-code"]
+  dependencies:
+    - cdxgen
+    - trivy-generate-bom-from-code
+  script:
+    # Принудительно меняю версию спецификации
+    - >- 
+      sed -i -e 's/"specVersion": "1.6"/"specVersion": "1.5"/g' $CI_PROJECT_DIR/trivy_bom_generate_code.json
+
+    - cyclonedx merge --input-format json --input-files $CI_PROJECT_DIR/trivy_bom_generate_code.json $CI_PROJECT_DIR/cdxgen_bom_generate_code --output-file $CI_PROJECT_DIR/all_bom_from_code.json
+    # - cyclonedx sign bom $CI_PROJECT_DIR/all_bom_from_code.json
+  artifacts:
+    paths:
+      - $CI_PROJECT_DIR/all_bom_from_code.json
+
+import-sbom-to-dt-scan:
+  stage: pre-build
+  tags: 
+    - vm
+  extends: .dt-upload
+  needs: ["cyclonedx"]
+  dependencies:
+    - cyclonedx
+  script:
+    - |    
+      curl -v -X "POST" "http://10.28.46.24:8081/api/v1/bom" \
+        -H 'Content-Type: multipart/form-data' \
+        -H "X-API-Key: $DT_API_KEY" \
+        -F "autoCreate=true" \
+        -F "projectName=govwa" \
+        -F "projectVersion=$CI_COMMIT_BRANCH" \
+        -F bom=@all_bom_from_code.json
+
+# WARNING - работаем достаточно долго из-за отсутвия NVD_API Key
+# Для демонстрации работы pypeline-аотключил флаг --failOnCVSS 7
+# Тема для ресёрча - Для dependency-check можно указать локальные БД с фидами, но напряму юс файлами DC не работает
+# --retireJsUrl https://vuln-db-mirror.xxxxxxx.net/jsrepository.json \
+# --nvdDatafeed https://vuln-db-mirror.xxxxxxx.net/nvdcve-{0}.json.gz \ 
+# --hostedSuppressionsUrl https://vuln-db-mirror.axxxxxx.net/publishedSuppressions.xml
+dependency_check:
+  stage: pre-build
+  tags:
+    - vm
+  image:
+    name: owasp/dependency-check
+    entrypoint: [""]
+  needs: ["trivy-sca"]
+  script:
+    - /usr/share/dependency-check/bin/dependency-check.sh --nvdApiKey "$NVD_API" --project "govwa" --out govwa.html --scan $CI_PROJECT_DIR/govwa --enableExperimental
+  artifacts:
+    paths:
+      - "govwa.html"
+
+# WARNING - смотрим только объединённый bom файл из исходного кода приложения, не смотрим image
+trivy-sca:
+  stage: pre-build
+  image: 
+    name: bitnami/trivy
+    entrypoint: [""] 
+  needs: ["cyclonedx"]
+  tags: 
+    - vm 
+  script:
+    - trivy sbom --output $CI_PROJECT_DIR/trivy_software_composition_analysis.json $CI_PROJECT_DIR/all_bom_from_code.json
+  artifacts:
+    paths:
+      - $CI_PROJECT_DIR/trivy_software_composition_analysis.json

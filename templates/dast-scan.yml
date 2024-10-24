@@ -1,0 +1,69 @@
+.dt-gettext:
+  stage: test-time
+  tags: 
+    - vm
+  image: docker:stable
+  services:
+    - name: docker:dind
+  before_script:
+    - apk add --update gettext
+
+build-afscan:
+  stage: test-time
+  tags:
+    - vm
+  extends: .dt-gettext
+  script:
+    - envsubst < $CI_PROJECT_DIR/owasp-zap/af-pypelines/video-5_gitlab.yaml > $CI_PROJECT_DIR/owasp-zap/af-pypelines/scan.yaml
+  artifacts:
+    paths:
+      - $CI_PROJECT_DIR/owasp-zap/af-pypelines/scan.yaml
+
+scan-ptbb:
+  stage: test-time
+  image: python
+  before_script:
+    - apt-get update && apt-get upgrade && apt-get install -y git
+    - git clone https://github.com/hound672/BlackBox-CI-CD-script
+    - pip install -r $CI_PROJECT_DIR/BlackBox-CI-CD-script/requirements.txt
+    - >-  
+      if ! [ -d $CI_PROJECT_DIR/reports ]; then
+        mkdir reports
+      fi
+  script:
+    - python $CI_PROJECT_DIR/BlackBox-CI-CD-script/main.py --auto-create --auth-data $CI_PROJECT_DIR/BB/auth_data --previous=stop --ignore-ssl --report-dir=$CI_PROJECT_DIR/reports --report-template=sarif
+  artifacts:
+    paths:
+      - reports/*
+
+owasp-zap:
+  stage: test-time
+  tags: 
+    - vm
+  needs: ["build-afscan"]
+  dependencies:
+      - build-afscan
+  image: 
+      name: zaproxy/zap-stable
+      entrypoint: [""]
+  script:
+      - zap.sh -cmd -autorun $CI_PROJECT_DIR/owasp-zap/af-pypelines/scan.yaml -loglevel debug -addoninstall jython -addonuninstall ascanrulesBeta -addonuninstall pscanrulesBeta -addonuninstall ascanrulesAlpha -addonuninstall pscanrulesAlpha
+      - cat /home/zap/.ZAP/zap.log > $CI_PROJECT_DIR/zap.log
+  artifacts:
+    paths:
+      - $CI_PROJECT_DIR/owasp-zap/af-pypelines/*
+      - $CI_PROJECT_DIR/zap.log
+
+nuclei:
+  stage: test-time
+  image: 
+    name: projectdiscovery/nuclei
+    entrypoint: [""] 
+  tags: 
+    - vm 
+  script:
+    - >- 
+      nuclei -u $TARGET_URL -json-export nuclei_dast_scan.json -silent -H "Cookie: $ZAP_AUTH_HEADER_VALUE"
+  artifacts:
+    paths:
+      - $CI_PROJECT_DIR/nuclei_dast_scan.json

@@ -1,0 +1,55 @@
+# WARNING - сканируется левый образ juice-shop
+trivy-generate-bom-from-image:
+  stage: post-build
+  image: 
+    name: bitnami/trivy
+    entrypoint: [""] 
+  tags: 
+    - vm 
+  script:
+    - trivy image --format cyclonedx --output trivy_bom_generate_image.json bkimminich/juice-shop
+  artifacts:
+    paths:
+      - $CI_PROJECT_DIR/trivy_bom_generate_image.json
+
+# WARNING - сканируется левый образ juice-shop
+syft-grype:
+  stage: post-build
+  image: 
+    name: homebrew/brew
+    entrypoint: [""] 
+  tags: 
+    - vm 
+  before_script:
+    - brew install syft
+    - brew install grype
+  script:
+    - ls $CI_PROJECT_DIR
+    - syft scan bkimminich/juice-shop --scope all-layers -o cyclonedx-json > $CI_PROJECT_DIR/syft_bom_generate_image.json
+    - grype sbom:$CI_PROJECT_DIR/syft_bom_generate_image.json -o cyclonedx-json --file $CI_PROJECT_DIR/grype_report.json
+  artifacts:
+    paths:
+      - $CI_PROJECT_DIR/syft_bom_generate_image.json
+      - $CI_PROJECT_DIR/grype_report.json
+
+# WARNING - сканируется левый образ juice-shop
+docker-scout-cli:
+  stage: post-build
+  image: docker:latest
+  services:
+    - docker:dind
+  before_script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+    # Install curl and the Docker Scout CLI
+    - |
+      apk add --update curl
+      curl -sSfL https://raw.githubusercontent.com/docker/scout-cli/main/install.sh | sh -s -- 
+      apk del curl 
+      rm -rf /var/cache/apk/*      
+    # # Login to Docker Hub required for Docker Scout CLI
+    # - docker login -u "$DOCKER_HUB_USER" -p "$DOCKER_HUB_PAT"
+  script:
+    - docker scout sbom --format spdx --output $CI_PROJECT_DIR/docker_bom_generate_image.json bkimminich/juice-shop
+  artifacts:
+    paths:
+      - $CI_PROJECT_DIR/docker_bom_generate_image.json
