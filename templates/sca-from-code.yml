@@ -23,7 +23,6 @@ cdxgen:
     paths:
       - $CI_PROJECT_DIR/cdxgen_bom_generate_code
 
-# WARNING - нестабильная работа job-ы, из-за параллельного запуска двух job, поэтому ждём завершение одного из - https://gitlab.com/pt-appsec/devsecops-tools/-/jobs/7730374689
 trivy-generate-bom-from-code:
   stage: pre-build
   image: 
@@ -39,7 +38,7 @@ trivy-generate-bom-from-code:
       - $CI_PROJECT_DIR/trivy_bom_generate_code.json
 
 # WARNING - возможно нестабильная работа job-ы, посольку trivy генериурет формат cyclonedx версии 1.6, cyclonedx поддерживает только версию 1.5
-# Поэтому разрешаем подание job-ы
+# Поэтому разрешаем job-е упасть
 # Подписать можно только xml bom файлы поэтому - на текущем этапе не подписываем 
 cyclonedx:
   stage: pre-build
