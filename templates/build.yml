@@ -1,0 +1,33 @@
+build:
+  stage: build
+  tags:
+    - vm
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
+  variables:
+    BUILD_CONTEXT: "."
+  script:
+    - |-
+      # 'Docker login'
+      mkdir -p /kaniko/.docker
+      echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
+    - |-
+       /kaniko/executor --context "${CI_PROJECT_DIR}/${BUILD_CONTEXT}" \
+                        --dockerfile "${CI_PROJECT_DIR}/Dockerfile" \
+                        --cache=true \
+                        --destination "${CI_REGISTRY_IMAGE}:${CI_COMMIT_REF_SLUG}.${CI_PIPELINE_ID}"
+  rules: 
+    - if: $CI_COMMIT_BRANCH
+      exists:
+        - Dockerfile 
+  needs: 
+    - semgrep-oss
+    - scan-ptai
+    - cdxgen
+    - trivy-generate-bom-from-code
+    - dependency_check
+    - trivy-sca
+    - gitleaks-dir
+    - gitleaks-git
+    - trufflehog-filesystem
